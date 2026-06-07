@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>StockSense — LSTM Price Predictor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+
+<!-- ── Noise overlay ──────────────────────────────────────────────────────── -->
+<div class="noise"></div>
+
+<!-- ── Header ──────────────────────────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    <span class="logo-icon">⬡</span>
+    <span class="logo-text">StockSense</span>
+  </div>
+  <div class="header-tag">LSTM · Neural Forecast</div>
+</header>
+
+<!-- ── Hero ────────────────────────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="hero-eyebrow">Deep Learning Price Engine</div>
+  <h1>Predict Tomorrow's<br /><em>Close Price</em></h1>
+  <p class="hero-sub">
+    A stacked 4-layer LSTM model trained on NSE/BSE historical data,
+    delivering next-day closing price forecasts with confidence metrics.
+  </p>
+</section>
+
+<!-- ── Search Panel ─────────────────────────────────────────────────────────── -->
+<main>
+  <section class="search-card">
+    <div class="field-group">
+      <div class="field">
+        <label for="ticker">Ticker Symbol</label>
+        <div class="input-wrap">
+          <input id="ticker" type="text" placeholder="e.g. POWERGRID.NS, RELIANCE.NS, TCS.NS"
+                 autocomplete="off" spellcheck="false" />
+        </div>
+        <div class="field-hint">Use Yahoo Finance format: <code>SYMBOL.NS</code> for NSE, <code>SYMBOL.BO</code> for BSE</div>
+      </div>
+      <div class="field field-sm">
+        <label for="years">History (years)</label>
+        <select id="years">
+          <option value="3">3 years</option>
+          <option value="5" selected>5 years</option>
+          <option value="10">10 years</option>
+          <option value="20">20 years</option>
+        </select>
+      </div>
+    </div>
+
+    <!-- Quick picks -->
+    <div class="quick-picks">
+      <span class="quick-label">Quick picks →</span>
+      <button class="chip" data-ticker="POWERGRID.NS">POWERGRID</button>
+      <button class="chip" data-ticker="RELIANCE.NS">RELIANCE</button>
+      <button class="chip" data-ticker="TCS.NS">TCS</button>
+      <button class="chip" data-ticker="INFY.NS">INFOSYS</button>
+      <button class="chip" data-ticker="HDFCBANK.NS">HDFC BANK</button>
+      <button class="chip" data-ticker="TATAMOTORS.NS">TATA MOTORS</button>
+    </div>
+
+    <button id="predict-btn" class="predict-btn">
+      <span class="btn-text">Run Prediction</span>
+      <span class="btn-icon">→</span>
+    </button>
+  </section>
+
+  <!-- ── Error banner ──────────────────────────────────────────────────────── -->
+  <div id="error-banner" class="error-banner hidden">
+    <span class="error-icon">⚠</span>
+    <span id="error-msg"></span>
+  </div>
+
+  <!-- ── Loader ──────────────────────────────────────────────────────────────── -->
+  <div id="loader" class="loader hidden">
+    <div class="loader-inner">
+      <div class="loader-bars">
+        <span></span><span></span><span></span><span></span><span></span>
+      </div>
+      <div id="loader-status">Fetching market data…</div>
+    </div>
+  </div>
+
+  <!-- ── Results ─────────────────────────────────────────────────────────────── -->
+  <section id="results" class="results hidden">
+
+    <!-- ticker header -->
+    <div class="results-header">
+      <div>
+        <div class="results-ticker" id="res-ticker">—</div>
+        <div class="results-date" id="res-date">—</div>
+      </div>
+      <div id="signal-badge" class="signal-badge">—</div>
+    </div>
+
+    <!-- KPI cards -->
+    <div class="kpi-grid">
+      <div class="kpi-card">
+        <div class="kpi-label">Current Price</div>
+        <div class="kpi-value" id="kpi-current">—</div>
+        <div class="kpi-unit">INR</div>
+      </div>
+      <div class="kpi-card highlight">
+        <div class="kpi-label">Predicted Next Close</div>
+        <div class="kpi-value" id="kpi-predicted">—</div>
+        <div class="kpi-pct" id="kpi-pct">—</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">MAE</div>
+        <div class="kpi-value" id="kpi-mae">—</div>
+        <div class="kpi-unit">₹ avg error</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">RMSE</div>
+        <div class="kpi-value" id="kpi-rmse">—</div>
+        <div class="kpi-unit">₹ root-mean sq.</div>
+      </div>
+      <div class="kpi-card">
+        <div class="kpi-label">MAPE</div>
+        <div class="kpi-value" id="kpi-mape">—</div>
+        <div class="kpi-unit">% error</div>
+      </div>
+    </div>
+
+    <!-- Chart -->
+    <div class="chart-section">
+      <div class="chart-header">
+        <span class="chart-title">Actual vs Predicted Closing Price</span>
+        <div class="chart-toggles">
+          <button class="toggle-btn active" data-layer="actual">Actual</button>
+          <button class="toggle-btn active" data-layer="predicted">Predicted</button>
+          <button class="toggle-btn" data-layer="ma100">MA 100</button>
+          <button class="toggle-btn" data-layer="ma200">MA 200</button>
+          <button class="toggle-btn" data-layer="ema100">EMA 100</button>
+          <button class="toggle-btn" data-layer="ema200">EMA 200</button>
+        </div>
+      </div>
+      <div class="chart-wrap">
+        <canvas id="price-chart"></canvas>
+      </div>
+    </div>
+
+    <!-- Model info -->
+    <div class="model-info">
+      <div class="info-label">Model Architecture</div>
+      <div class="arch-pills">
+        <span class="pill">LSTM(50) → Dropout(0.2)</span>
+        <span class="pill-sep">→</span>
+        <span class="pill">LSTM(60) → Dropout(0.3)</span>
+        <span class="pill-sep">→</span>
+        <span class="pill">LSTM(80) → Dropout(0.4)</span>
+        <span class="pill-sep">→</span>
+        <span class="pill">LSTM(120) → Dropout(0.5)</span>
+        <span class="pill-sep">→</span>
+        <span class="pill">Dense(1)</span>
+      </div>
+      <div class="info-detail">Lookback window: <strong>100 days</strong> · Optimizer: <strong>Adam</strong> · Loss: <strong>MSE</strong> · Trained on <strong>NSE:POWERGRID</strong></div>
+    </div>
+
+  </section>
+
+</main>
+
+<!-- ── Footer ──────────────────────────────────────────────────────────────── -->
+<footer>
+  <span>StockSense · LSTM Price Predictor</span>
+  <span class="footer-warn">⚠ For educational purposes only. Not financial advice.</span>
+</footer>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
